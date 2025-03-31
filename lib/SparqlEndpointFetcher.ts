@@ -28,12 +28,17 @@ export class SparqlEndpointFetcher {
   protected readonly sparqlJsonParser: SparqlJsonParser;
   protected readonly sparqlXmlParser: SparqlXmlParser;
 
+  protected readonly proxyUrl?: string;
+  protected readonly proxyCredentials?: string;
+
   public constructor(args?: ISparqlEndpointFetcherArgs) {
     this.method = args?.method ?? 'POST';
     this.timeout = args?.timeout;
     this.additionalUrlParams = args?.additionalUrlParams ?? new URLSearchParams();
     this.defaultHeaders = args?.defaultHeaders ?? new Headers();
     this.fetchCb = args?.fetch;
+    this.proxyUrl = args?.proxyUrl;
+    this.proxyCredentials = args?.proxyCredentials;
     this.sparqlJsonParser = new SparqlJsonParser(args);
     this.sparqlXmlParser = new SparqlXmlParser(args);
     this.sparqlParsers = {
@@ -225,7 +230,7 @@ export class SparqlEndpointFetcher {
     url: string,
     init: RequestInit,
     options?: { ignoreBody: boolean },
-  ): Promise<[ string, NodeJS.ReadableStream ]> {
+  ): Promise<[string, NodeJS.ReadableStream]> {
     let timeout;
     let responseStream: NodeJS.ReadableStream | undefined;
 
@@ -235,15 +240,22 @@ export class SparqlEndpointFetcher {
       timeout = setTimeout(() => controller.abort(), this.timeout);
     }
 
+    // Modifier l'URL et les headers pour utiliser le proxy
+    if (this.proxyUrl) {
+      url = this.proxyUrl;
+      init.headers = {
+        ...init.headers,
+        'Proxy-Authorization': this.proxyCredentials ? `Basic ${Buffer.from(this.proxyCredentials).toString('base64')}` : '',
+      };
+    }
+
     const httpResponse: Response = await (this.fetchCb ?? fetch)(url, init);
 
     clearTimeout(timeout);
 
     // Handle response body
     if (!options?.ignoreBody && httpResponse.body) {
-      // Wrap WhatWG readable stream into a Node.js readable stream
-      // If the body already is a Node.js stream (in the case of node-fetch), don't do explicit conversion.
-      responseStream = <NodeJS.ReadableStream> (
+      responseStream = <NodeJS.ReadableStream>(
         isStream(httpResponse.body) ? httpResponse.body : readableFromWeb(httpResponse.body)
       );
     }
@@ -258,7 +270,7 @@ export class SparqlEndpointFetcher {
     // Determine the content type
     const contentType = httpResponse.headers.get('Content-Type')?.split(';').at(0) ?? '';
 
-    return [ contentType, responseStream! ];
+    return [contentType, responseStream!];
   }
 }
 
@@ -275,6 +287,16 @@ export interface ISparqlEndpointFetcherArgs extends ISparqlJsonParserArgs, ISpar
    * A custom fetch function.
    */
   fetch?: (input: Request | string, init?: RequestInit) => Promise<Response>;
+}
+
+export interface ISparqlEndpointFetcherArgs extends ISparqlJsonParserArgs, ISparqlXmlParserArgs {
+  method?: 'POST' | 'GET';
+  additionalUrlParams?: URLSearchParams;
+  timeout?: number;
+  defaultHeaders?: Headers;
+  fetch?: (input: Request | string, init?: RequestInit) => Promise<Response>;
+  proxyUrl?: string;
+  proxyCredentials?: string;
 }
 
 export interface ISparqlResultsParser {

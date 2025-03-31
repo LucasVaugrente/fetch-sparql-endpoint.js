@@ -12,6 +12,9 @@ const streamifyString = require('streamify-string');
 const DF = new DataFactory();
 
 describe('SparqlEndpointFetcher', () => {
+  const proxyUrl = 'http://localhost:3001';
+  const proxyCredentials = 'alice@solid.org:alice';
+
   describe('constructed without fetch callback', () => {
     it('should have an undefined fetch function', async() => {
       expect(new SparqlEndpointFetcher().fetchCb).toBeUndefined();
@@ -21,7 +24,7 @@ describe('SparqlEndpointFetcher', () => {
   describe('constructed with fetch callback', () => {
     const prefixes = 'PREFIX foaf: <http://xmlns.com/foaf/0.1/>\nPREFIX : <http://example.org/>\n';
 
-    const endpoint = 'https://dbpedia.org/sparql';
+    const endpoint = 'http://localhost:3030/meteorite/query';
     const querySelect = 'SELECT * WHERE { ?s ?p ?o }';
     const queryAsk = 'ASK WHERE { ?s ?p ?o }';
     const queryConstruct = 'CONSTRUCT WHERE { ?s ?p ?o }';
@@ -43,12 +46,34 @@ describe('SparqlEndpointFetcher', () => {
     let fetcher: SparqlEndpointFetcher;
 
     beforeEach(() => {
-      fetchCb = () => Promise.resolve(new Response('dummy'));
-      fetcher = new SparqlEndpointFetcher({ fetch: fetchCb });
+      fetchCb = jest.fn(() => Promise.resolve(new Response('dummy')));
+      fetcher = new SparqlEndpointFetcher({ fetch: fetchCb, proxyUrl, proxyCredentials });
     });
 
     it('should have the default fetch function', async() => {
       expect(fetcher.fetchCb).toBe(fetchCb);
+    });
+
+    describe('getQueryType', () => {
+      it('should detect a select query', () => {
+        expect(fetcher.getQueryType(querySelect)).toBe('SELECT');
+      });
+    });
+
+    describe('fetchRawStream', () => {
+      it('should pass the correct URL and HTTP headers via proxy', async () => {
+        await fetcher.fetchRawStream(endpoint, querySelect, 'myacceptheader');
+        const headers: Headers = new Headers();
+        headers.append('Accept', 'myacceptheader');
+        headers.append('Content-Type', 'application/x-www-form-urlencoded');
+        headers.append('Proxy-Authorization', `Basic ${Buffer.from(proxyCredentials).toString('base64')}`);
+        const body = new URLSearchParams();
+        body.set('query', querySelect);
+        expect(fetchCb).toHaveBeenCalledWith(
+          proxyUrl,
+          expect.objectContaining({ headers, method: 'POST', body }),
+        );
+      });
     });
 
     describe('getQueryType', () => {
