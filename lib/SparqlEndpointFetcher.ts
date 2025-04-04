@@ -7,26 +7,26 @@ import {
   buildAuthenticatedFetch,
   createDpopHeader,
   generateDpopKeyPair,
-} from '@inrupt/solid-client-authn-core';
-import type * as RDF from '@rdfjs/types';
-import * as isStream from 'is-stream';
-import { StreamParser } from 'n3';
-import { readableFromWeb } from 'readable-from-web';
-import type { Readable } from 'readable-stream';
+} from "@inrupt/solid-client-authn-core";
+import type * as RDF from "@rdfjs/types";
+import * as isStream from "is-stream";
+import { StreamParser } from "n3";
+import { readableFromWeb } from "readable-from-web";
+import type { Readable } from "readable-stream";
 import {
   type InsertDeleteOperation,
   type ManagementOperation,
   Parser as SparqlParser,
-} from 'sparqljs';
+} from "sparqljs";
 import {
   type ISettings as ISparqlJsonParserArgs,
   SparqlJsonParser,
-} from 'sparqljson-parse';
+} from "sparqljson-parse";
 import {
   type ISettings as ISparqlXmlParserArgs,
   SparqlXmlParser,
-} from 'sparqlxml-parse';
-import * as stringifyStream from 'stream-to-string';
+} from "sparqlxml-parse";
+import * as stringifyStream from "stream-to-string";
 
 /**
  * A SparqlEndpointFetcher can send queries to SPARQL endpoints,
@@ -34,15 +34,15 @@ import * as stringifyStream from 'stream-to-string';
  */
 export class SparqlEndpointFetcher {
   public static readonly CONTENTTYPE_SPARQL_JSON =
-    'application/sparql-results+json';
+    "application/sparql-results+json";
 
   public static readonly CONTENTTYPE_SPARQL_XML =
-    'application/sparql-results+xml';
+    "application/sparql-results+xml";
 
-  public static readonly CONTENTTYPE_TURTLE = 'text/turtle';
+  public static readonly CONTENTTYPE_TURTLE = "text/turtle";
   public static readonly CONTENTTYPE_SPARQL = `${SparqlEndpointFetcher.CONTENTTYPE_SPARQL_JSON};q=1.0,${SparqlEndpointFetcher.CONTENTTYPE_SPARQL_XML};q=0.7`;
 
-  protected readonly method: 'GET' | 'POST';
+  protected readonly method: "GET" | "POST" | "PUT";
   protected readonly timeout?: number;
   public additionalUrlParams: URLSearchParams;
   protected readonly defaultHeaders: Headers;
@@ -58,8 +58,10 @@ export class SparqlEndpointFetcher {
   protected readonly proxyUrl?: string;
   protected readonly proxyCredentials?: string;
 
+  protected readonly authFetch?: string;
+
   public constructor(args?: ISparqlEndpointFetcherArgs) {
-    this.method = args?.method ?? 'POST';
+    this.method = args?.method ?? "PUT";
     this.timeout = args?.timeout;
     this.additionalUrlParams =
       args?.additionalUrlParams ?? new URLSearchParams();
@@ -71,18 +73,19 @@ export class SparqlEndpointFetcher {
     this.sparqlXmlParser = new SparqlXmlParser(args);
     this.sparqlParsers = {
       [SparqlEndpointFetcher.CONTENTTYPE_SPARQL_JSON]: {
-        parseBooleanStream: sparqlResponseStream =>
+        parseBooleanStream: (sparqlResponseStream) =>
           this.sparqlJsonParser.parseJsonBooleanStream(sparqlResponseStream),
-        parseResultsStream: sparqlResponseStream =>
+        parseResultsStream: (sparqlResponseStream) =>
           this.sparqlJsonParser.parseJsonResultsStream(sparqlResponseStream),
       },
       [SparqlEndpointFetcher.CONTENTTYPE_SPARQL_XML]: {
-        parseBooleanStream: sparqlResponseStream =>
+        parseBooleanStream: (sparqlResponseStream) =>
           this.sparqlXmlParser.parseXmlBooleanStream(sparqlResponseStream),
-        parseResultsStream: sparqlResponseStream =>
+        parseResultsStream: (sparqlResponseStream) =>
           this.sparqlXmlParser.parseXmlResultsStream(sparqlResponseStream),
       },
     };
+    this.authFetch = null;
   }
 
   /**
@@ -94,15 +97,15 @@ export class SparqlEndpointFetcher {
    * @return {'SELECT' | 'ASK' | 'CONSTRUCT' | 'UNKNOWN'} The query type.
    */
   public getQueryType(
-    query: string,
-  ): 'SELECT' | 'ASK' | 'CONSTRUCT' | 'UNKNOWN' {
+    query: string
+  ): "SELECT" | "ASK" | "CONSTRUCT" | "UNKNOWN" {
     const parsedQuery = new SparqlParser({ sparqlStar: true }).parse(query);
-    if (parsedQuery.type === 'query') {
-      return parsedQuery.queryType === 'DESCRIBE' ?
-        'CONSTRUCT' :
-        parsedQuery.queryType;
+    if (parsedQuery.type === "query") {
+      return parsedQuery.queryType === "DESCRIBE"
+        ? "CONSTRUCT"
+        : parsedQuery.queryType;
     }
-    return 'UNKNOWN';
+    return "UNKNOWN";
   }
 
   /**
@@ -113,12 +116,12 @@ export class SparqlEndpointFetcher {
    * @param {string} query An update query.
    * @return {'UNKNOWN' | UpdateTypes} The included update operations.
    */
-  public getUpdateTypes(query: string): 'UNKNOWN' | IUpdateTypes {
+  public getUpdateTypes(query: string): "UNKNOWN" | IUpdateTypes {
     const parsedQuery = new SparqlParser({ sparqlStar: true }).parse(query);
-    if (parsedQuery.type === 'update') {
+    if (parsedQuery.type === "update") {
       const operations: IUpdateTypes = {};
       for (const update of parsedQuery.updates) {
-        if ('type' in update) {
+        if ("type" in update) {
           operations[update.type] = true;
         } else {
           operations[update.updateType] = true;
@@ -126,7 +129,7 @@ export class SparqlEndpointFetcher {
       }
       return operations;
     }
-    return 'UNKNOWN';
+    return "UNKNOWN";
   }
 
   /**
@@ -138,15 +141,16 @@ export class SparqlEndpointFetcher {
    */
   public async fetchBindings(
     endpoint: string,
-    query: string,
+    query: string
   ): Promise<NodeJS.ReadableStream> {
-    const [ contentType, responseStream ] = await this.fetchRawStream(
+    const [contentType, responseStream] = await this.fetchRawStream(
       endpoint,
       query,
-      SparqlEndpointFetcher.CONTENTTYPE_SPARQL,
+      SparqlEndpointFetcher.CONTENTTYPE_SPARQL
     );
     const parser: ISparqlResultsParser | undefined =
       this.sparqlParsers[contentType];
+    console.log(contentType);
     if (!parser) {
       throw new Error(`Unknown SPARQL results content type: ${contentType}`);
     }
@@ -160,10 +164,10 @@ export class SparqlEndpointFetcher {
    * @return {Promise<boolean>} A boolean resolving to the answer.
    */
   public async fetchAsk(endpoint: string, query: string): Promise<boolean> {
-    const [ contentType, responseStream ] = await this.fetchRawStream(
+    const [contentType, responseStream] = await this.fetchRawStream(
       endpoint,
       query,
-      SparqlEndpointFetcher.CONTENTTYPE_SPARQL,
+      SparqlEndpointFetcher.CONTENTTYPE_SPARQL
     );
     const parser: ISparqlResultsParser | undefined =
       this.sparqlParsers[contentType];
@@ -181,12 +185,12 @@ export class SparqlEndpointFetcher {
    */
   public async fetchTriples(
     endpoint: string,
-    query: string,
+    query: string
   ): Promise<Readable & RDF.Stream> {
-    const [ contentType, responseStream ] = await this.fetchRawStream(
+    const [contentType, responseStream] = await this.fetchRawStream(
       endpoint,
       query,
-      SparqlEndpointFetcher.CONTENTTYPE_TURTLE,
+      SparqlEndpointFetcher.CONTENTTYPE_TURTLE
     );
     return <Readable>(
       (<unknown>responseStream.pipe(new StreamParser({ format: contentType })))
@@ -210,10 +214,10 @@ export class SparqlEndpointFetcher {
     });
 
     const init: RequestInit = {
-      method: 'POST',
+      method: "POST",
       headers: {
         ...defaultHeadersRaw,
-        'content-type': 'application/sparql-update',
+        "content-type": "application/sparql-update",
       },
       body: query,
       signal: abortController.signal,
@@ -236,26 +240,28 @@ export class SparqlEndpointFetcher {
   public async fetchRawStream(
     endpoint: string,
     query: string,
-    acceptHeader: string,
+    acceptHeader: string
   ): Promise<[string, NodeJS.ReadableStream]> {
     let url: string =
-      this.method === 'POST' ?
-        endpoint :
-        `${endpoint}?query=${encodeURIComponent(query)}`;
+      this.method === "POST"
+        ? endpoint
+        : `${endpoint}?query=${encodeURIComponent(query)}`;
 
     // Initiate request
     let body: URLSearchParams | undefined;
     const headers: Headers = new Headers(this.defaultHeaders);
-    headers.append('Accept', acceptHeader);
+    headers.append("Accept", acceptHeader);
 
-    if (this.method === 'POST') {
-      headers.append('Content-Type', 'application/x-www-form-urlencoded');
+    console.log(this.method);
+    
+    if (this.method === "POST") {
+      headers.append("Content-Type", "application/x-www-form-urlencoded");
       body = new URLSearchParams();
-      body.set('query', query);
-      for (const [ key, value ] of this.additionalUrlParams.entries()) {
+      body.set("query", query);
+      for (const [key, value] of this.additionalUrlParams.entries()) {
         body.set(key, value);
       }
-      headers.append('Content-Length', body.toString().length.toString());
+      headers.append("Content-Length", body.toString().length.toString());
     } else if (this.additionalUrlParams.toString().length > 0) {
       url += `&${this.additionalUrlParams.toString()}`;
     }
@@ -266,7 +272,7 @@ export class SparqlEndpointFetcher {
   public async getSolidAuthFetch(
     email: string,
     password: string,
-    serverUrl: string,
+    serverUrl: string
   ) {
     // Étape 1 : Obtenir le endpoint de login
     const indexResponse = await fetch(`${serverUrl}/.account/`);
@@ -274,13 +280,13 @@ export class SparqlEndpointFetcher {
 
     // Étape 2 : Se connecter avec l'email et le mot de passe
     const loginResponse = await fetch(controls.password.login, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      method: "POST",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ email, password }),
     });
 
     const { authorization } = await loginResponse.json();
-    console.log('[Solid] Authorization token obtenu.', authorization);
+    // console.log(authorization);
 
     // Étape 3 : Récupérer les infos de l’utilisateur pour client credentials
     const accountIndexResponse = await fetch(`${serverUrl}/.account/`, {
@@ -292,39 +298,39 @@ export class SparqlEndpointFetcher {
     const clientCredsResponse = await fetch(
       accountControls.account.clientCredentials,
       {
-        method: 'POST',
+        method: "POST",
         headers: {
           authorization: `CSS-Account-Token ${authorization}`,
-          'content-type': 'application/json',
+          "content-type": "application/json",
         },
         body: JSON.stringify({
-          name: 'comunica-proxy-token',
-          webId: `${serverUrl}/${email.split('@')[0]}/profile/card#me`,
+          name: "comunica-proxy-token",
+          webId: `${serverUrl}/${email.split("@")[0]}/profile/card#me`,
         }),
-      },
+      }
     );
 
     const { id, secret } = await clientCredsResponse.json();
-    console.log('[Solid] Client credentials générés : ', id, secret);
+    // console.log("[Solid] Client credentials générés : ", id, secret);
 
     // Étape 5 : Obtenir un token DPoP
     const dpopKey = await generateDpopKeyPair();
     const tokenUrl = `${serverUrl}/.oidc/token`;
     const authString = `${encodeURIComponent(id)}:${encodeURIComponent(
-      secret,
+      secret
     )}`;
     const tokenResponse = await fetch(tokenUrl, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        authorization: `Basic ${Buffer.from(authString).toString('base64')}`,
-        'content-type': 'application/x-www-form-urlencoded',
-        dpop: await createDpopHeader(tokenUrl, 'POST', dpopKey),
+        authorization: `Basic ${Buffer.from(authString).toString("base64")}`,
+        "content-type": "application/x-www-form-urlencoded",
+        dpop: await createDpopHeader(tokenUrl, "POST", dpopKey),
       },
-      body: 'grant_type=client_credentials&scope=webid',
+      body: "grant_type=client_credentials&scope=webid",
     });
 
     const { access_token: accessToken } = await tokenResponse.json();
-    console.log('[Solid] Token DPoP obtenu : ', accessToken);
+    console.log("[Solid] Token DPoP obtenu : ", accessToken);
 
     // Étape 6 : Construction du fetch authentifié
     const authFetch = await buildAuthenticatedFetch(accessToken, { dpopKey });
@@ -342,7 +348,7 @@ export class SparqlEndpointFetcher {
   private async handleFetchCall(
     url: string,
     init: RequestInit,
-    options?: { ignoreBody: boolean },
+    options?: { ignoreBody: boolean }
   ): Promise<[string, NodeJS.ReadableStream]> {
     let timeout;
     let responseStream: NodeJS.ReadableStream | undefined;
@@ -355,8 +361,26 @@ export class SparqlEndpointFetcher {
 
     // Si un proxy est défini, on l’utilise comme intermédiaire
     if (this.proxyUrl) {
-      console.log('[Comunica] Requête envoyée via proxy :', this.proxyUrl);
+      console.log("[Comunica] Requête envoyée via proxy :", this.proxyUrl);
       url = this.proxyUrl;
+      const authFetch = await this.getSolidAuthFetch("alice@solid.org", "alice", "http://localhost:3001");
+
+      // const response = await authFetch(url, {
+      //   method: "PUT", // PUT is commonly used for writing files
+      //   headers: {
+      //     "Content-Type": "text/plain", // Change if writing binary files
+      //   },
+      //   body: 'SELECT * WHERE { ?s ?p ?o } LIMIT 2',
+      // });
+
+      // if (!response.ok) {
+      //   throw new Error(
+      //     `Failed to write file. Status: ${response.status} ${response.statusText}`
+      //   );
+      // }
+  
+      // console.log(`File successfully written to ${url}`);
+      // console.log(`Server response: ${await response.text()}`);
     }
 
     const httpResponse: Response = await (this.fetchCb ?? fetch)(url, init);
@@ -371,20 +395,18 @@ export class SparqlEndpointFetcher {
       );
     }
 
-    console.log(responseStream);
-
-    if (!httpResponse.ok || (!responseStream && !options?.ignoreBody)) {
-      const simpleUrl = url.split('?').at(0);
-      const bodyString = responseStream
-        ? await stringifyStream(responseStream)
-        : 'empty response';
-      throw new Error(
-        `Invalid SPARQL endpoint response from ${simpleUrl} (HTTP status ${httpResponse.status}):\n${bodyString}`,
-      );
-    }
+    // if (!httpResponse.ok || (!responseStream && !options?.ignoreBody)) {
+    //   const simpleUrl = url.split("?").at(0);
+    //   const bodyString = responseStream
+    //     ? await stringifyStream(responseStream)
+    //     : "empty response";
+    //   throw new Error(
+    //     `Invalid SPARQL endpoint response from ${simpleUrl} (HTTP status ${httpResponse.status}):\n${bodyString}`
+    //   );
+    // }
 
     const contentType =
-      httpResponse.headers.get('Content-Type')?.split(';').at(0) ?? '';
+      httpResponse.headers.get("Content-Type")?.split(";").at(0) ?? "";
 
     return [contentType, responseStream!];
   }
@@ -392,12 +414,12 @@ export class SparqlEndpointFetcher {
 
 export interface ISparqlEndpointFetcherArgs
   extends ISparqlJsonParserArgs,
-  ISparqlXmlParserArgs {
+    ISparqlXmlParserArgs {
   /**
    * A custom HTTP method for issuing (non-update) queries, defaults to POST.
    * Update queries are always issued via POST.
    */
-  method?: 'POST' | 'GET';
+  method?: "POST" | "GET";
   additionalUrlParams?: URLSearchParams;
   timeout?: number;
   defaultHeaders?: Headers;
@@ -409,8 +431,8 @@ export interface ISparqlEndpointFetcherArgs
 
 export interface ISparqlEndpointFetcherArgs
   extends ISparqlJsonParserArgs,
-  ISparqlXmlParserArgs {
-  method?: 'POST' | 'GET';
+    ISparqlXmlParserArgs {
+  method?: "POST" | "GET";
   additionalUrlParams?: URLSearchParams;
   timeout?: number;
   defaultHeaders?: Headers;
@@ -432,6 +454,6 @@ export type IBindings = Record<string, RDF.Term>;
 
 export type IUpdateTypes = {
   [K in
-    | ManagementOperation['type']
-    | InsertDeleteOperation['updateType']]?: boolean;
+    | ManagementOperation["type"]
+    | InsertDeleteOperation["updateType"]]?: boolean;
 };
