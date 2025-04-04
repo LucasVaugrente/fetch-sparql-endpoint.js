@@ -236,7 +236,7 @@ describe('SparqlEndpointFetcher', () => {
 
         const query = 'SELECT * WHERE { ?s ?p ?o } LIMIT 10';
         const bindingsStream = await fetcher.fetchBindings(
-          'http://localhost:3001/alice/sparql-permission.ttl',
+          'http://localhost:3002',
           query
         );
         const bindings = await arrayifyStream(bindingsStream);
