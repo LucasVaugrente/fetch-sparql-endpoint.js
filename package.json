@@ -49,6 +49,7 @@
     "prepare": "yarn husky"
   },
   "dependencies": {
+    "@inrupt/solid-client-authn-core": "^2.3.0",
     "@types/n3": "^1.0.0",
     "@types/readable-stream": "^4.0.0",
     "@types/sparqljs": "^3.0.0",

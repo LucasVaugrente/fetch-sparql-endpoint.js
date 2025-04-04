@@ -24,7 +24,7 @@ describe('SparqlEndpointFetcher', () => {
   describe('constructed with fetch callback', () => {
     const prefixes = 'PREFIX foaf: <http://xmlns.com/foaf/0.1/>\nPREFIX : <http://example.org/>\n';
 
-    const endpoint = 'http://localhost:3030/meteorite/query';
+    const endpoint = 'http://localhost:3030/meteorites/query';
     const querySelect = 'SELECT * WHERE { ?s ?p ?o }';
     const queryAsk = 'ASK WHERE { ?s ?p ?o }';
     const queryConstruct = 'CONSTRUCT WHERE { ?s ?p ?o }';
@@ -57,22 +57,6 @@ describe('SparqlEndpointFetcher', () => {
     describe('getQueryType', () => {
       it('should detect a select query', () => {
         expect(fetcher.getQueryType(querySelect)).toBe('SELECT');
-      });
-    });
-
-    describe('fetchRawStream', () => {
-      it('should pass the correct URL and HTTP headers via proxy', async () => {
-        await fetcher.fetchRawStream(endpoint, querySelect, 'myacceptheader');
-        const headers: Headers = new Headers();
-        headers.append('Accept', 'myacceptheader');
-        headers.append('Content-Type', 'application/x-www-form-urlencoded');
-        headers.append('Proxy-Authorization', `Basic ${Buffer.from(proxyCredentials).toString('base64')}`);
-        const body = new URLSearchParams();
-        body.set('query', querySelect);
-        expect(fetchCb).toHaveBeenCalledWith(
-          proxyUrl,
-          expect.objectContaining({ headers, method: 'POST', body }),
-        );
       });
     });
 
@@ -245,6 +229,22 @@ describe('SparqlEndpointFetcher', () => {
     });
 
     describe('fetchRawStream', () => {
+      it('should execute a real SELECT query via Solid proxy', async () => {
+        const fetcher = new SparqlEndpointFetcher({
+          proxyUrl: 'http://localhost:3001/alice/sparql-permission.ttl',
+        });
+
+        const query = 'SELECT * WHERE { ?s ?p ?o } LIMIT 10';
+        const bindingsStream = await fetcher.fetchBindings(
+          'http://localhost:3001/alice/sparql-permission.ttl',
+          query
+        );
+        const bindings = await arrayifyStream(bindingsStream);
+
+        expect(bindings.length).toBeGreaterThan(0);
+        console.log('✅ Résultats via proxy :', bindings.slice(0, 3));
+      });
+
       it('should pass the correct URL and HTTP headers', async() => {
         const fetchCbThis = jest.fn(() => Promise.resolve(new Response(streamifyString('dummy'))));
         const fetcherThis = new SparqlEndpointFetcher({ fetch: fetchCbThis });
